@@ -186,7 +186,17 @@
     }
     @media(max-height:540px){.detail-card{bottom:92px}.map-bottom{bottom:9px}.map-topbar{top:9px}}
     @media(prefers-reduced-motion:reduce){*,*:before,*:after{transition:none!important;scroll-behavior:auto!important}}
-  </style>
+  
+    .source-dialog{border:1px solid #d5e4d8;border-radius:18px;padding:20px;width:min(500px,calc(100% - 24px));max-height:85dvh;overflow-y:auto}
+    .source-dialog::backdrop{background:#0b2923a6}
+    .source-dialog h2{font:700 22px Georgia,serif;margin:0 0 10px}
+    .source-dialog p,.source-dialog small{font-size:12px;line-height:1.5;color:#61786a}
+    .source-dialog form{display:grid;gap:11px;margin-top:14px}
+    .source-dialog label{font-size:12px;font-weight:700;display:grid;gap:4px}
+    .source-dialog input,.source-dialog select{width:100%;min-width:0;padding:9px;background:white;border:1px solid #dae4dc;border-radius:9px;color:#244439}
+    .source-dialog .actions{display:flex;gap:10px}
+    .source-dialog .actions button{flex:1}
+    </style>
 </head>
 <body>
   <div class="app">
@@ -257,6 +267,7 @@
         <div id="mapList" class="map-list" role="listbox" aria-label="Historische Karten"></div>
       </div>
       <div class="sidebar-bottom">
+        <button class="btn btn-primary" id="addSource" type="button" style="width:100%;margin-bottom:12px">＋ Neue Kartenquelle</button>
         <div class="field-head"><label for="opacityRange">Historische Karte: Deckkraft</label><output id="opacityValue" for="opacityRange">78 %</output></div>
         <input id="opacityRange" type="range" min="0" max="100" step="1" value="78" aria-label="Deckkraft der historischen Karte in Prozent">
         <div class="bottom-actions">
@@ -330,6 +341,20 @@
       <div id="toast" class="toast" role="status" aria-live="polite"><span id="toastText"></span><button id="toastDismiss" class="toast-dismiss" type="button" aria-label="Hinweis schließen">×</button></div>
     </main>
   </div>
+  <dialog id="sourceDialog" class="source-dialog">
+    <h2>Neue Kartenquelle hinzufügen</h2>
+    <p>XYZ, WMS, WMTS (EPSG:3857) und georeferenzierte IIIF-Karten via Allmaps. Eigene Quellen werden nur in diesem Browser gespeichert.</p>
+    <form id="sourceForm">
+      <label>Name<input id="customName" required maxlength="110" placeholder="Berlin 1890"></label>
+      <label>Typ<select id="customType"><option value="xyz">XYZ</option><option value="wms">WMS</option><option value="wmts">WMTS</option><option value="allmaps">IIIF / Allmaps</option></select></label>
+      <label>Region<select id="customRegion"><option>Berlin</option><option>Spandau</option><option>Tiergarten</option><option>Charlottenburg</option><option>Grunewald</option><option>Wien</option><option>Rom</option><option>Europa</option><option>Preußen</option></select></label>
+      <label>Jahr (optional)<input id="customYear" type="number" min="1000" max="2099"></label>
+      <label><span id="customUrlLabel">XYZ-URL mit {z}, {x}, {y}</span><input id="customUrl" required placeholder="https://example.org/{z}/{x}/{y}.png" spellcheck="false" autocomplete="off" autocapitalize="off"></label>
+      <label id="customLayerRow" hidden>WMS-Layername<input id="customLayerName" placeholder="Name aus GetCapabilities"></label>
+      <small id="customHelp">Es muss eine georeferenzierte Karte sein. Nutzungsrechte beim Anbieter prüfen.</small>
+      <div class="actions"><button class="btn" id="sourceCancel" type="button">Abbrechen</button><button class="btn btn-primary" type="submit">Hinzufügen</button></div>
+    </form>
+  </dialog>
   <dialog id="aboutDialog" class="about-modal">
     <h2>Über den Kartenatlas</h2>
     <p>Der historische Kartenatlas zeigt ausgewählte historische, georeferenzierte Karten über aktuellen OpenStreetMap-Kacheln. Die Karten werden direkt von den in dieser HTML-Datei hinterlegten externen Anbietern geladen.</p>
@@ -427,6 +452,37 @@
         const detailUrl=match?`${match[1]}/maps/${match[2]}`:sourceUrl.replace(/\{z\}\/\{x\}\/\{y\}\.png.*/, '');
         return {id,name,year,region,sourceUrl,detailUrl,provider,displayName:name==='Berlin 1925'?`${name} · Karte ${match?match[2]:id+1}`:name};
       });
+      const ORIGINAL_COUNT=maps.length;
+      const SOURCE_KEY='kartenatlas-zusatzquellen-v1';
+      function customDefinition(x){
+        const type=String(x.type);
+        if(!['xyz','wms','wmts','allmaps'].includes(type))throw Error('Ungültiger Quellentyp');
+        const name=String(x.name||'').trim().slice(0,110),region=String(x.region||'Berlin');
+        if(!name||!Object.hasOwn(regionDefinitions,region))throw Error('Name oder Region ungültig');
+        const url=String(x.url||'').trim();
+        let u;try{u=new URL(url)}catch(_){throw Error('Gültige HTTPS-Adresse erforderlich')}
+        if(u.protocol!=='https:'||u.username||u.password||url.length>2300)throw Error('Nur öffentliche HTTPS-Adressen ohne Zugangsdaten');
+        const has=t=>url.toLowerCase().includes(t.toLowerCase());
+        if(type==='xyz'&&(!has('{z}')||!has('{x}')||!has('{y}')))throw Error('XYZ benötigt {z}, {x}, {y}');
+        if(type==='wmts'&&!((has('{TileMatrix}')||has('{z}'))&&(has('{TileCol}')||has('{x}'))&&(has('{TileRow}')||has('{y}'))))throw Error('WMTS benötigt TileMatrix, TileCol und TileRow');
+        const layers=String(x.layers||'').trim().slice(0,180);
+        if(type==='wms'&&!layers)throw Error('WMS-Layername erforderlich');
+        const year=x.year&&/^[12][0-9]{3}$/.test(String(x.year))?Number(x.year):null;
+        return {type,name,region,url,layers,year};
+      }
+      function toMap(d,id){
+        const providers={xyz:'XYZ',wms:'WMS',wmts:'WMTS',allmaps:'Allmaps / IIIF'};
+        return {id,name:d.name,displayName:d.name,region:d.region,year:d.year,
+          sourceType:d.type,sourceUrl:d.type==='allmaps'
+            ?'https://allmaps.xyz/{z}/{x}/{y}.png?url='+encodeURIComponent(d.url):d.url,
+          detailUrl:d.url,layers:d.layers,provider:providers[d.type],custom:true,definition:d};
+      }
+      try{
+        const saved=JSON.parse(localStorage.getItem(SOURCE_KEY)||'[]');
+        if(Array.isArray(saved))for(const data of saved.slice(0,70)){
+          try{maps.push(toMap(customDefinition(data),maps.length))}catch(_){}
+        }
+      }catch(_){}
       const definedRegions=['Alle','Berlin','Spandau','Tiergarten','Charlottenburg','Grunewald','Wien','Rom','Europa','Preußen','Favoriten','Weitere'];
       let savedFavorites=[];
       try { savedFavorites=JSON.parse(localStorage.getItem('historischer-atlas-favoriten')||'[]'); if(!Array.isArray(savedFavorites))savedFavorites=[]; } catch (_) { savedFavorites=[]; }
@@ -600,6 +656,7 @@
         const img=$('mapPreview');img.hidden=true;$('previewFallback').hidden=false;
         img.onerror=()=>{img.hidden=true;$('previewFallback').hidden=false;};
         img.onload=()=>{img.hidden=false;$('previewFallback').hidden=true;};
+        if(m.sourceType==='wms'||m.sourceType==='wmts')return;
         img.src=previewUrl;
       }
       function escapeHtml(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
@@ -623,10 +680,20 @@
         active=m;
         focusMap(m,previous,restoreView);
         syncHistorical();
-        layer=L.tileLayer(m.sourceUrl,{
-          minZoom:2,maxZoom:19,tms:false,
-          attribution:'',keepBuffer:3,updateWhenIdle:true
-        }).addTo(historicalMap);
+
+        if(m.sourceType==='wms')layer=L.tileLayer.wms(m.sourceUrl,{
+          layers:m.layers,format:'image/png',transparent:true,version:'1.3.0',
+          minZoom:2,maxZoom:19,attribution:''
+        });
+        else {
+          let url=m.sourceUrl;
+          if(m.sourceType==='wmts')url=url.replace(/\{TileMatrix\}/gi,'{z}')
+            .replace(/\{TileCol\}/gi,'{x}').replace(/\{TileRow\}/gi,'{y}')
+            .replace(/\{TileMatrixSet\}/gi,'GoogleMapsCompatible');
+          layer=L.tileLayer(url,{minZoom:2,maxZoom:19,tms:false,
+            attribution:'',keepBuffer:3,updateWhenIdle:true});
+        }
+        layer.addTo(historicalMap);
         applyPane();
         $('sourceAttributionLink').href=m.detailUrl;
         $('sourceAttributionLink').textContent=m.provider.replace(' (alte Adresse)','');
@@ -635,6 +702,34 @@
         $('titleYear').textContent=m.year?String(m.year):m.name.toLowerCase().includes('antik')?'Antike':'Karte';
         renderList();updateTimeline();showDetail();
       }
+      function sourceUi(){
+        const type=$('customType').value;
+        $('customLayerRow').hidden=type!=='wms';
+        const labels={xyz:'XYZ-URL mit {z}, {x}, {y}',wms:'WMS-Basis-URL (EPSG:3857)',wmts:'WMTS ResourceURL (GoogleMapsCompatible)',allmaps:'Allmaps Georeference Annotation-URL'};
+        $('customUrlLabel').textContent=labels[type];
+        $('customHelp').textContent=type==='allmaps'
+          ?'Nur bereits georeferenzierte IIIF-Karten; ein IIIF-Manifest allein genügt nicht. Abruf über allmaps.xyz.'
+          :'Bitte Nutzungsbedingungen und geografische Abdeckung beim Anbieter prüfen.';
+      }
+      $('customType').addEventListener('change',sourceUi);
+      $('addSource').addEventListener('click',()=>{sourceUi();$('sourceDialog').showModal()});
+      $('sourceCancel').addEventListener('click',()=>$('sourceDialog').close());
+      $('sourceForm').addEventListener('submit',event=>{
+        event.preventDefault();
+        try{
+          if(maps.length>=ORIGINAL_COUNT+70)throw Error('Maximal 70 eigene Quellen');
+          const d=customDefinition({name:$('customName').value,type:$('customType').value,
+            region:$('customRegion').value,year:$('customYear').value,
+            url:$('customUrl').value,layers:$('customLayerName').value});
+          const current=maps.slice(ORIGINAL_COUNT).map(m=>m.definition);
+          localStorage.setItem(SOURCE_KEY,JSON.stringify([...current,d]));
+          const m=toMap(d,maps.length);maps.push(m);
+          regionFilter='Alle';$('mapSearch').value='';
+          renderRegions();selectMap(m.id);
+          $('sourceDialog').close();$('sourceForm').reset();closeMobile();
+          setNotice('Quelle ergänzt. Bei leerer Karte den passenden Ausschnitt prüfen.');
+        }catch(e){setNotice(e.message||'Quelle nicht speicherbar',4200);}
+      });
       $('closeDetail').addEventListener('click',()=>{
         detailOpen=false;$('detailCard').classList.remove('open');
       });
