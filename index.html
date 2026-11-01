@@ -1,0 +1,863 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#173e37">
+  <meta name="description" content="Historische Karten erkunden, nach Ort und Epoche suchen und mit der heutigen Karte vergleichen.">
+  <title>Historischer Kartenatlas</title>
+  <!-- Leaflet 1.9.4. CSS mit automatischem CDN-Fallback.
+       Auch bei direktem Öffnen der HTML-Datei bleibt eine Internetverbindung für Kartenkacheln nötig. -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"
+        onerror="this.onerror=null;this.href='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css'">
+  <style>
+    :root {
+      color-scheme: light;
+      --forest:#183e37; --deep:#102e29; --ink:#23342f; --muted:#6d7a74;
+      --gold:#c09a65; --line:#e4e9e4; --paper:#ffffff; --wash:#f6f8f4;
+      --shadow:0 16px 44px rgba(18,45,35,.14);
+    }
+    *{box-sizing:border-box}
+    [hidden]{display:none!important}
+    html,body{height:100%;margin:0;overflow:hidden;overscroll-behavior:none;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink)}
+    button,input,select{font:inherit}
+    button{cursor:pointer}
+    button:disabled{opacity:.4;cursor:not-allowed}
+    button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #6e9d89;outline-offset:2px}
+    .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+    .app{position:fixed;inset:0;height:100%;height:100dvh;display:flex;background:#e6e9df;overflow:hidden}
+    .sidebar{width:378px;flex:0 0 378px;display:flex;flex-direction:column;min-height:0;background:var(--paper);z-index:1050;border-right:1px solid #e2e8df;box-shadow:3px 0 25px rgba(14,37,30,.045)}
+    .sidebar-top{padding:22px 22px 15px;border-bottom:1px solid var(--line);flex:none}
+    .brand{display:flex;align-items:center;gap:12px}
+    .brand-mark{border:0;cursor:pointer;height:43px;width:43px;border-radius:13px;background:var(--forest);color:#e5d1aa;display:grid;place-items:center;font:25px Georgia,serif;box-shadow:0 6px 15px #163f3830;flex:none}
+    .brand-text strong{display:block;font:700 19px Georgia,"Times New Roman",serif;letter-spacing:-.35px;color:#183f36}
+    .brand-text small{color:var(--muted);font-size:11px;letter-spacing:.8px;text-transform:uppercase}
+    .mobile-close{display:none}
+    .search-box{position:relative;margin-top:21px}
+    .search-box .mag{position:absolute;top:11px;left:13px;color:#78877c;pointer-events:none}
+    .text-input{width:100%;border:1px solid #d9e3d9;border-radius:12px;background:#f8faf7;padding:11px 12px 11px 39px;font-size:13px;color:#263b33;outline:none}
+    .text-input:focus{border-color:#5a9480;background:white;box-shadow:0 0 0 3px #5a948016}
+    .filter-scroller{display:flex;gap:7px;overflow-x:auto;padding:14px 0 3px;scrollbar-width:none}
+    .filter-scroller::-webkit-scrollbar{display:none}
+    .pill{border:1px solid #dce5dd;padding:7px 12px;border-radius:22px;background:#fff;color:#66766d;font-size:12px;font-weight:650;white-space:nowrap}
+    .pill[aria-pressed="true"]{background:#1c483e;border-color:#1c483e;color:white}
+    .side-scroll{min-height:0;overflow-y:auto;padding:14px 17px 24px;scrollbar-color:#d6dfd5 transparent;scrollbar-width:thin}
+    .section-title{display:flex;justify-content:space-between;align-items:center;padding:0 4px 10px}
+    .section-title h2{font-size:12px;letter-spacing:.9px;text-transform:uppercase;color:#75847a;font-weight:750;margin:0}
+    .section-title span{font-size:12px;color:#869388}
+    .map-list{display:flex;flex-direction:column;gap:7px}
+    .map-card{position:relative;width:100%;text-align:left;border:1px solid #e5eae4;border-radius:12px;background:white;padding:11px 12px;display:flex;gap:10px;align-items:center;transition:background .15s,border-color .15s;min-height:62px}
+    .map-card:hover{background:#f7faf5;border-color:#afcabc}
+    .map-card[aria-selected="true"]{background:#eef5ef;border-color:#87ab98;box-shadow:inset 3px 0 0 #1f634e}
+    .map-card-icon{width:36px;height:36px;flex:none;border-radius:9px;display:grid;place-items:center;background:#eef1e8;color:#547264;font:21px Georgia,serif}
+    .map-card[aria-selected="true"] .map-card-icon{background:#d8e9db;color:#244f40}
+    .map-card-main{flex:1;min-width:0}
+    .map-card-main strong{display:block;font-size:13px;color:#2d4037;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .map-card-main small{display:block;font-size:11px;color:#7a8a7e;margin-top:4px}
+    .star{flex:none;border:0;background:transparent;padding:7px;color:#99a59b;font-size:21px;line-height:1}
+    .star[aria-pressed="true"]{color:#b7873c}
+    .empty{text-align:center;border:1px dashed #dae2d7;padding:24px 15px;border-radius:12px;color:#77847b;font-size:13px}
+    .sidebar-bottom{flex:none;border-top:1px solid var(--line);padding:15px 20px 19px;background:#fdfefd}
+    .field-head{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:9px}
+    .field-head label,.field-head strong{font-weight:700;font-size:12px}
+    .field-head output{font-weight:700;font-size:12px;color:#577d64}
+    input[type=range]{width:100%;accent-color:#255c4b;cursor:pointer}
+    .bottom-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:13px}
+    .btn{border:1px solid #dce6dd;background:white;color:var(--forest);padding:11px 12px;border-radius:11px;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;gap:7px}
+    .btn:hover{background:#f3f8f3}
+    .btn-primary{background:var(--forest);border-color:var(--forest);color:#fff}
+    .btn-primary:hover{background:#28584b}
+    .stage{position:relative;flex:1;min-width:0;min-height:0;overflow:hidden;isolation:isolate}
+    #map{position:absolute;inset:0;background:#e4e8de;z-index:1}
+    #historicalMap{position:absolute;inset:0;z-index:2;pointer-events:none;background:transparent!important;clip-path:inset(0 0 0 0)}
+    #historicalMap.leaflet-container{background:transparent!important}
+    #historicalMap *{pointer-events:none!important}
+    .leaflet-container{font:inherit}
+    /* Alle Bedienelemente befinden sich über den beiden Karten. */
+    .map-attribution{position:absolute;left:0;right:0;bottom:0;z-index:720;background:#fffffff0;padding:5px 9px;font-size:10px;line-height:1.3;color:#405249;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;min-height:24px}
+    .map-attribution a{color:#246a87;text-decoration:none}
+    .map-attribution a:hover{text-decoration:underline}
+    .zoom-panel{position:absolute;z-index:730;right:13px;top:164px;display:flex;flex-direction:column;background:white;box-shadow:0 4px 18px #263c3530;border-radius:12px;overflow:hidden}
+    .zoom-panel button{width:40px;height:43px;border:0;background:white;color:#284c3e;font-size:25px;line-height:1}
+    .zoom-panel button+button{border-top:1px solid #e5e9e3}
+    .zoom-panel button:active{background:#eaf3eb}
+    .map-topbar{position:absolute;z-index:700;top:17px;left:17px;right:17px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start;pointer-events:none}
+    .map-title{background:#fff;box-shadow:0 5px 23px #1837291b;display:flex;align-items:center;gap:10px;border-radius:12px;padding:10px 14px;max-width:min(455px,calc(100% - 85px));pointer-events:auto}
+    .yearbox{border-radius:8px;background:#eef4ec;color:var(--forest);padding:7px 9px;font:700 13px Georgia,serif;flex:none}
+    .map-title-name{min-width:0}
+    .map-title-name strong{font-size:13px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .map-title-name small{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;margin-top:2px}
+    .top-actions{display:flex;gap:7px;pointer-events:auto}
+    .icon-btn{border:1px solid #e2e8e1;background:white;border-radius:11px;box-shadow:0 4px 16px #18372921;width:40px;height:40px;display:grid;place-items:center;color:#305344;font-size:18px;font-weight:700}
+    .icon-btn:hover{background:#f1f8f2}
+    .icon-btn[aria-pressed="true"]{background:#214c3f;color:#fff;border-color:#214c3f}
+    .mode-panel{position:absolute;top:80px;left:17px;z-index:690;display:flex;gap:0;border:1px solid #e5eae5;background:#fff;border-radius:12px;padding:4px;box-shadow:0 6px 22px #18372918}
+    .mode-btn{border:0;background:transparent;padding:9px 14px;border-radius:9px;color:#738377;font-weight:700;font-size:12px;white-space:nowrap}
+    .mode-btn[aria-pressed="true"]{background:#234e42;color:white}
+    .map-bottom{position:absolute;left:50%;bottom:44px;transform:translateX(-50%);z-index:700;pointer-events:none;width:min(650px,calc(100% - 42px));display:flex;flex-direction:column;align-items:center;gap:10px}
+    .timeline{width:100%;display:flex;align-items:center;gap:10px;padding:11px 13px;border-radius:15px;background:#fff;box-shadow:0 10px 35px #173a2c2a;pointer-events:auto}
+    .timeline button{width:34px;height:34px;flex:none;border:1px solid #e1e8e0;border-radius:10px;background:#f9faf8;font-size:20px;line-height:1;color:var(--forest)}
+    .timeline-center{min-width:0;flex:1;display:flex;flex-direction:column;gap:4px;text-align:center}
+    .timeline-center strong{font:700 15px Georgia,serif;color:#29463b}
+    .timeline-center small{font-size:11px;color:#728177;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .view-notice{border-radius:10px;background:#fffffff2;box-shadow:0 4px 18px #0002;font-size:12px;color:#51665a;padding:8px 12px;max-width:100%;text-align:center;pointer-events:auto}
+    .compare-line{position:absolute;z-index:640;top:0;bottom:0;left:50%;width:2px;background:#fff;box-shadow:0 0 5px #1a382f6a;display:none;pointer-events:none}
+    .compare-line::before{content:"";position:absolute;top:0;bottom:0;left:-1px;width:1px;background:#153c3270}
+    .compare-handle{position:absolute;z-index:650;top:50%;left:50%;transform:translate(-50%,-50%);width:44px;height:44px;border:0;border-radius:50%;background:white;color:#214c3e;font-size:21px;box-shadow:0 4px 16px #0004;display:none;touch-action:none;cursor:ew-resize}
+    .compare-label{position:absolute;z-index:630;top:145px;display:none;background:#fffffff0;color:#284a3c;font-weight:750;font-size:11px;border-radius:8px;padding:7px 10px;box-shadow:0 3px 14px #0002;pointer-events:none}
+    #oldLabel{left:17px}#newLabel{right:17px}
+    .compare-range-box{width:100%;display:none;background:white;box-shadow:0 5px 18px #0002;padding:8px 15px;border-radius:12px;pointer-events:auto;align-items:center;gap:10px}
+    .compare-range-box span{white-space:nowrap;color:#567165;font-size:11px;font-weight:700}
+    .compare-range-box input{flex:1}
+    .address-popup{position:absolute;z-index:950;top:76px;right:16px;width:min(350px,calc(100% - 32px));background:white;border:1px solid #e5ebe2;box-shadow:var(--shadow);border-radius:14px;padding:16px;display:none}
+    .address-popup.open{display:block}
+    .address-popup h2{font-size:14px;margin:0 0 10px}
+    .address-search{display:flex;gap:7px}
+    .address-search input{min-width:0;flex:1;padding:10px;border:1px solid #dce4dc;border-radius:9px;font-size:12px}
+    .address-results{margin-top:9px;max-height:220px;overflow-y:auto}
+    .address-result{width:100%;text-align:left;border:0;border-bottom:1px solid #eff2ee;background:#fff;padding:10px 4px;font-size:12px;color:#334a3d}
+    .address-result:hover{background:#eff6ef}
+    .mini-note{display:block;margin-top:8px;color:#89948b;font-size:10px;line-height:1.5}
+    .detail-card{position:absolute;z-index:740;left:17px;bottom:128px;width:min(350px,calc(100% - 35px));max-height:min(42dvh,360px);overflow-y:auto;border:1px solid #e4e9e1;border-radius:14px;background:#fff;box-shadow:0 8px 27px #15352620;padding:12px;display:none}
+    .detail-card.open{display:block}
+    .stage.is-comparing .detail-card{bottom:179px}
+    .detail-close{flex:none;border:0;border-radius:8px;background:#eef3ed;width:29px;height:29px;color:#284b3f;font-size:20px;line-height:1}
+    .detail-head{display:flex;justify-content:space-between;gap:8px;align-items:center}
+    .detail-head strong{font-size:12px}
+    .small-link{color:#316e53;font-weight:700;font-size:11px;text-decoration:none}
+    .small-link:hover{text-decoration:underline}
+    .detail-content{display:flex;gap:12px;margin-top:10px}
+    .preview{width:94px;height:85px;object-fit:cover;background:#e6e7d9;border-radius:9px;border:1px solid #e8e8dc;flex:none}
+    .preview-fallback{width:94px;height:85px;display:grid;place-items:center;font-size:10px;text-align:center;color:#8a988c;background:#eff2e8;border-radius:9px;flex:none}
+    .detail-desc{font-size:11px;color:#748178;line-height:1.6;min-width:0}
+    .detail-desc b{color:#30483c}
+    .check-row{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:650;color:#486453;margin-top:10px}
+    .check-row input{accent-color:#1d5b48}
+    .toast{position:absolute;z-index:1600;left:50%;top:auto;bottom:195px;transform:translate(-50%,12px);background:#224a3e;color:white;font-size:12px;border-radius:11px;padding:12px 17px;box-shadow:var(--shadow);max-width:min(490px,calc(100% - 25px));line-height:1.45;pointer-events:none;opacity:0;transition:opacity .2s,transform .2s;text-align:center}
+    .toast.show{opacity:1;transform:translate(-50%,0)}
+    .toast-dismiss{border:0;background:transparent;color:#fff;margin-left:9px;padding:2px 4px;font-weight:800;pointer-events:auto}
+    .gps-map-button{position:absolute;z-index:760;right:17px;top:78px;border:1px solid #dce6dd;border-radius:11px;background:white;color:#214c3f;padding:10px 12px;display:flex;align-items:center;justify-content:center;gap:7px;font-weight:750;font-size:12px;box-shadow:0 4px 18px #18372928;min-height:40px}
+    .gps-map-button:hover{background:#eef7f1}
+    .gps-map-button:disabled{opacity:.75;cursor:progress}
+    .gps-map-button svg{width:18px;height:18px;flex:none}
+    .recenter-button{position:absolute;z-index:755;right:13px;bottom:117px;border:1px solid #d9e6df;border-radius:24px;background:white;color:#204c3d;box-shadow:0 3px 15px #15372c38;padding:9px 13px;display:flex;align-items:center;gap:7px;font-weight:750;font-size:12px;min-height:40px}
+    .recenter-button svg{width:17px;height:17px;flex:none}
+    .recenter-button:active{background:#eaf4ee}
+    .stage.is-comparing .recenter-button{bottom:165px}
+    .gps-indicator{position:absolute;z-index:745;left:50%;top:50%;width:24px;height:24px;pointer-events:none;transform:translate(-50%,-50%);filter:drop-shadow(0 1px 4px #153e5140)}
+    .gps-beam{display:none;position:absolute;left:50%;top:50%;width:180px;height:180px;margin-left:-90px;margin-top:-90px;transform:rotate(var(--heading,0deg));transform-origin:center}
+    .gps-indicator.has-heading .gps-beam{display:block}
+    .gps-dot{position:absolute;left:50%;top:50%;width:19px;height:19px;transform:translate(-50%,-50%);border-radius:50%;background:#2175c2;border:4px solid #fff;box-shadow:0 0 0 2px #2175c299}
+    .gps-indicator.has-heading .gps-dot{width:15px;height:15px;border-width:2px}
+    .mobile-open{display:none}
+    .about-modal{border:1px solid #dfebe0;border-radius:18px;box-shadow:0 22px 70px #1a322b4a;padding:25px;width:min(520px,calc(100% - 30px));max-height:85vh;overflow-y:auto;color:#293f34}
+    .about-modal::backdrop{background:#1029219a}
+    .about-modal h2{font:700 23px Georgia,serif;margin:0 0 12px}
+    .about-modal p{font-size:13px;line-height:1.65;color:#657568}
+    .about-modal code{font-size:11px;overflow-wrap:anywhere}
+    .about-modal .btn{width:100%;margin-top:15px}
+    .state-status{font-size:11px;color:#7d8e80;margin-top:8px;min-height:15px}
+    .about-link{font-size:11px;border:0;background:transparent;color:#5a7e6d;padding:5px 0;text-decoration:underline;text-underline-offset:2px}
+    @media(max-width:900px){
+      .sidebar{width:340px;flex-basis:340px}.sidebar-top{padding:17px}.mode-panel{top:73px}
+    }
+    @media(max-width:680px){
+      .app{display:block}.stage{width:100%;height:100%}
+      .sidebar{position:absolute;left:0;right:0;bottom:0;width:100%;height:min(78dvh,750px);z-index:1200;border:0;border-radius:22px 22px 0 0;box-shadow:0 -10px 42px #162b2b3d;transform:translateY(110%);transition:transform .27s ease;visibility:hidden}
+      .sidebar.open{transform:translateY(0);visibility:visible}
+      .sidebar-top{padding:15px 17px 8px}.brand-mark{width:36px;height:36px;font-size:21px}.brand-text strong{font-size:17px}
+      .mobile-close{display:grid;margin-left:auto;border:0;background:#eef3ee;color:#385847;border-radius:10px;width:35px;height:35px;place-items:center;font-size:22px}
+      .search-box{margin-top:13px}.filter-scroller{padding-top:10px}.side-scroll{padding-top:9px}
+      .sidebar-bottom{padding:11px 15px calc(13px + env(safe-area-inset-bottom))}
+      .mobile-open{display:flex;position:absolute;z-index:760;left:14px;top:13px;border:0;background:#fff;color:#234c3b;padding:10px 14px;align-items:center;gap:7px;font-weight:750;font-size:12px;border-radius:11px;box-shadow:0 4px 16px #173b2f29}
+      .gps-map-button{top:13px;right:14px;min-height:39px;padding:9px 11px;font-size:12px}
+      .map-topbar{left:14px;top:65px;right:14px}.map-title{max-width:calc(100% - 94px);padding:8px 10px}.map-title-name strong{font-size:12px}.yearbox{font-size:11px}
+      .top-actions{gap:6px}.icon-btn{height:36px;width:36px}
+      .mode-panel{top:119px;left:14px;padding:3px}.mode-btn{padding:8px 12px;font-size:11px}
+      .zoom-panel{top:168px;right:13px}
+      .recenter-button{bottom:calc(117px + env(safe-area-inset-bottom))}
+      .stage.is-comparing .recenter-button{bottom:calc(165px + env(safe-area-inset-bottom))}
+      .map-bottom{bottom:calc(38px + env(safe-area-inset-bottom));width:calc(100% - 26px)}
+      .timeline{padding:9px 11px}.compare-label{top:166px}
+      .detail-card{left:12px;bottom:calc(111px + env(safe-area-inset-bottom));width:calc(100% - 24px);max-height:35dvh}
+      .stage.is-comparing .detail-card{bottom:calc(159px + env(safe-area-inset-bottom))}
+      .toast{bottom:calc(195px + env(safe-area-inset-bottom))}
+      .address-popup{top:109px;right:12px}
+    }
+    @media(max-height:540px){.detail-card{bottom:92px}.map-bottom{bottom:9px}.map-topbar{top:9px}}
+    @media(prefers-reduced-motion:reduce){*,*:before,*:after{transition:none!important;scroll-behavior:auto!important}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- Alle ursprünglichen Karten-URLs bleiben ABSICHTLICH unmittelbar in dieser index.html.
+         Zum Hinzufügen einfach eine weitere option mit value=".../{z}/{x}/{y}.png" eintragen. -->
+    <select id="originalMapSources" class="sr-only" tabindex="-1" aria-hidden="true">
+      <option value="https://mapwarper.net/maps/tile/83167/{z}/{x}/{y}.png">--Rom antik--</option>
+      <option value="https://mapwarper.net/maps/tile/54844/{z}/{x}/{y}.png">--Forum Romanum--</option>
+      <option value="https://tinuviel85.github.io/maptiles/{z}/{x}/{y}.png">test</option>
+      <option value="https://warper.wmflabs.org/maps/tile/6795/{z}/{x}/{y}.png">Berlin 13. Jhdt</option>
+      <option value="https://mapwarper.net/maps/tile/71372/{z}/{x}/{y}.png">Wien 1823</option>
+      <option value="https://mapwarper.net/maps/tile/93440/{z}/{x}/{y}.png">Wien 1905</option>
+      <option value="https://warper.wmflabs.org/maps/tile/184/{z}/{x}/{y}.png">Berlin 1712</option>
+      <option value="https://warper.wmflabs.org/maps/tile/1729/{z}/{x}/{y}.png">Zentralmarkthalle 1729</option>
+      <option value="https://warper.wmflabs.org/maps/tile/1144/{z}/{x}/{y}.png">Berlin 1738</option>
+      <option value="https://warper.wmflabs.org/maps/tile/1141/{z}/{x}/{y}.png">Berlin 1739</option>
+      <option value="https://warper.wmflabs.org/maps/tile/486/{z}/{x}/{y}.png">Berlin 1778</option>
+      <option value="https://warper.wmflabs.org/maps/tile/467/{z}/{x}/{y}.png">Berlin 1811</option>
+      <option value="https://warper.wmflabs.org/maps/tile/471/{z}/{x}/{y}.png">Berlin u. Umg. 1816</option>
+      <option value="https://warper.wmflabs.org/maps/tile/286/{z}/{x}/{y}.png">Berlin 1833</option>
+      <option value="https://warper.wmflabs.org/maps/tile/478/{z}/{x}/{y}.png">Berlin 1849</option>
+      <option value="https://warper.wmflabs.org/maps/tile/288/{z}/{x}/{y}.png">Berlin 1862</option>
+      <option value="https://warper.wmflabs.org/maps/tile/1129/{z}/{x}/{y}.png">Berlin 1864</option>
+      <option value="https://warper.wmflabs.org/maps/tile/483/{z}/{x}/{y}.png">Berlin 1895</option>
+      <option value="https://warper.wmflabs.org/maps/tile/1220/{z}/{x}/{y}.png">Berlin 1910</option>
+      <option value="https://warper.wmflabs.org/maps/tile/1123/{z}/{x}/{y}.png">Berlin u. Umg. 1913</option>
+      <option value="https://warper.wmflabs.org/maps/tile/191/{z}/{x}/{y}.png">Berlin 1925</option>
+      <option value="https://warper.wmflabs.org/maps/tile/1145/{z}/{x}/{y}.png">Berlin 1925</option>
+      <option value="https://warper.wmflabs.org/maps/tile/190/{z}/{x}/{y}.png">Berlin 1928</option>
+      <option value="https://warper.wmflabs.org/maps/tile/206/{z}/{x}/{y}.png">Spandau 1912</option>
+      <option value="https://warper.wmflabs.org/maps/tile/208/{z}/{x}/{y}.png">Spandau 1913</option>
+      <option value="https://warper.wmflabs.org/maps/tile/202/{z}/{x}/{y}.png">Spandau 1835</option>
+      <option value="https://warper.wmflabs.org/maps/tile/2238/{z}/{x}/{y}.png">Tiergarten 1835</option>
+      <option value="https://warper.wmflabs.org/maps/tile/2209/{z}/{x}/{y}.png">Tiergarten 1765</option>
+      <option value="https://warper.wmflabs.org/maps/tile/2210/{z}/{x}/{y}.png">Tiergarten 1793</option>
+      <option value="https://warper.wmflabs.org/maps/tile/490/{z}/{x}/{y}.png">Grunewald 1911</option>
+      <option value="https://warper.wmflabs.org/maps/tile/1127/{z}/{x}/{y}.png">Charlottenburg u. Westend 1883</option>
+      <option value="https://warper.wmflabs.org/maps/tile/194/{z}/{x}/{y}.png">Nordberlin u. Spandau 1909</option>
+      <option value="https://warper.wmflabs.org/maps/tile/2679/{z}/{x}/{y}.png">Akzisemauer</option>
+      <option value="https://www.mapwarper.net/maps/tile/77649/{z}/{x}/{y}.png">Europa antik</option>
+      <option value="https://www.mapwarper.net/maps/tile/31241/{z}/{x}/{y}.png">Europa 1644</option>
+      <option value="https://www.mapwarper.net/maps/tile/40364/{z}/{x}/{y}.png">Europa 1648</option>
+      <option value="https://www.mapwarper.net/maps/tile/34111/{z}/{x}/{y}.png">Europa 1790</option>
+      <option value="https://www.mapwarper.net/maps/tile/46121/{z}/{x}/{y}.png">Europa 1815</option>
+      <option value="https://mapwarper.prov.vic.gov.au/maps/tile/5505/{z}/{x}/{y}.png">Europa 1859</option>
+      <option value="https://www.mapwarper.net/maps/tile/75489/{z}/{x}/{y}.png">Europa 1912</option>
+      <option value="https://www.mapwarper.net/maps/tile/23789/{z}/{x}/{y}.png">Europa 1914</option>
+      <option value="https://www.mapwarper.net/maps/tile/39802/{z}/{x}/{y}.png">Europa 1955</option>
+      <option value="https://www.mapwarper.net/maps/tile/74989/{z}/{x}/{y}.png">Preussen</option>
+      <option value="https://mapwarper.net/maps/tile/77491/{z}/{x}/{y}.png">Messegelände Berlin</option>
+    </select>
+    <aside id="sidebar" class="sidebar" aria-label="Kartenbibliothek">
+      <div class="sidebar-top">
+        <div class="brand">
+          <button class="brand-mark" id="aboutBrand" type="button" title="Über die Anwendung" aria-label="Über die Anwendung">H</button>
+          <div class="brand-text"><strong>Historischer Kartenatlas</strong><small>Vergangenheit entdecken</small></div>
+          <button id="closeSidebar" class="mobile-close" title="Kartenauswahl schließen" aria-label="Kartenauswahl schließen">×</button>
+        </div>
+        <div class="search-box">
+          <span class="mag" aria-hidden="true">⌕</span>
+          <label for="mapSearch" class="sr-only">Historische Karten durchsuchen</label>
+          <input class="text-input" id="mapSearch" type="search" placeholder="Karte, Ort oder Jahr suchen …" autocomplete="off">
+        </div>
+        <div id="regions" class="filter-scroller" aria-label="Nach Region filtern"></div>
+      </div>
+      <div class="side-scroll">
+        <div class="section-title"><h2>Kartensammlung</h2><span id="mapCount"></span></div>
+        <div id="mapList" class="map-list" role="listbox" aria-label="Historische Karten"></div>
+      </div>
+      <div class="sidebar-bottom">
+        <div class="field-head"><label for="opacityRange">Historische Karte: Deckkraft</label><output id="opacityValue" for="opacityRange">78 %</output></div>
+        <input id="opacityRange" type="range" min="0" max="100" step="1" value="78" aria-label="Deckkraft der historischen Karte in Prozent">
+        <div class="bottom-actions">
+          <button id="locateButton" class="btn btn-primary" type="button">◎ Mein Standort</button>
+          <button id="infoButton" class="btn" type="button">ⓘ Karteninfo</button>
+        </div>
+        <label class="check-row"><input id="followLocation" type="checkbox"> Standort beim Gehen verfolgen</label>
+        <div class="state-status" id="locationStatus" role="status"></div>
+        <button id="aboutButton" class="about-link" type="button">Hilfe, Quellen und Datenschutz</button>
+      </div>
+    </aside>
+    <main class="stage" aria-label="Interaktive historische Karte">
+      <div id="map"></div>
+      <div id="historicalMap" aria-hidden="true"></div>
+      <div id="gpsIndicator" class="gps-indicator" hidden aria-hidden="true">
+        <div id="gpsBeam" class="gps-beam"><svg viewBox="0 0 180 180" width="180" height="180" aria-hidden="true"><defs><linearGradient id="beamFade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2388db" stop-opacity=".07"/><stop offset="1" stop-color="#2388db" stop-opacity=".35"/></linearGradient></defs><path d="M90 90 L44 9 Q90 -12 136 9 Z" fill="url(#beamFade)" stroke="#2388db" stroke-opacity=".25"/></svg></div>
+        <div class="gps-dot"></div>
+      </div>
+      <button id="recenterButton" class="recenter-button" type="button" hidden title="Zum Standort zurückkehren und automatisches Folgen wieder aktivieren" aria-label="Neu zentrieren und Standort weiter verfolgen">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+        Neu zentrieren
+      </button>
+      <div class="zoom-panel" aria-label="Karte zoomen"><button id="zoomIn" type="button" aria-label="Vergrößern">+</button><button id="zoomOut" type="button" aria-label="Verkleinern">−</button></div>
+      <div class="map-attribution"><a href="https://leafletjs.com/" target="_blank" rel="noopener">Leaflet</a> | © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap-Mitwirkende</a> · <a id="sourceAttributionLink" href="#" target="_blank" rel="noopener noreferrer">Historische Kartenquelle</a></div>
+      <button id="openSidebar" class="mobile-open" type="button">☰ Karten auswählen</button>
+      <button id="locateMapButton" class="gps-map-button" type="button" title="Auf meinen aktuellen Standort zoomen" aria-label="Auf meinen aktuellen Standort zoomen">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+        Mein Standort
+      </button>
+      <div class="map-topbar">
+        <div class="map-title" aria-live="polite"><div id="titleYear" class="yearbox">Antike</div><div class="map-title-name"><strong id="titleMap">Historische Karte</strong><small id="titleRegion">Karte laden …</small></div></div>
+        <div class="top-actions">
+          <button id="addressButton" class="icon-btn" type="button" title="Adresse suchen" aria-label="Adresse suchen">⌕</button>
+          <button id="shareButton" class="icon-btn" type="button" title="Kartenausschnitt teilen" aria-label="Kartenausschnitt teilen">↗</button>
+        </div>
+      </div>
+      <div class="mode-panel" role="group" aria-label="Darstellungsmodus">
+        <button id="overlayMode" class="mode-btn" type="button" aria-pressed="true">Überlagern</button>
+        <button id="compareMode" class="mode-btn" type="button" aria-pressed="false">Vergleichen</button>
+      </div>
+      <div id="oldLabel" class="compare-label">Historisch</div>
+      <div id="newLabel" class="compare-label">Heute</div>
+      <div id="compareLine" class="compare-line" aria-hidden="true"></div>
+      <button id="compareHandle" class="compare-handle" type="button" aria-label="Vergleichstrennlinie verschieben" title="Nach links oder rechts ziehen">↔</button>
+      <div id="addressPopup" class="address-popup" aria-label="Ortssuche">
+        <h2>Ort oder Adresse suchen</h2>
+        <form id="addressForm" class="address-search">
+          <label for="addressInput" class="sr-only">Adresse</label>
+          <input id="addressInput" type="search" required minlength="3" maxlength="180" placeholder="z. B. Alexanderplatz, Berlin">
+          <button class="btn btn-primary" type="submit">Suchen</button>
+        </form>
+        <div id="addressResults" class="address-results" role="status"></div>
+        <small class="mini-note">Ortssuche über OpenStreetMap / Nominatim. Suchbegriffe werden für die Suche an diesen Dienst übertragen.</small>
+      </div>
+      <div id="detailCard" class="detail-card" aria-label="Informationen zur historischen Karte">
+        <div class="detail-head"><strong>Karteninformationen</strong><a id="detailLink" class="small-link" href="#" target="_blank" rel="noopener noreferrer">Quelle öffnen ↗</a><button id="closeDetail" class="detail-close" type="button" aria-label="Karteninformationen schließen">×</button></div>
+        <div class="detail-content">
+          <img id="mapPreview" class="preview" alt="Kachelvorschau der ausgewählten historischen Karte" hidden>
+          <div id="previewFallback" class="preview-fallback">Keine Vorschau verfügbar</div>
+          <div class="detail-desc"><div id="detailTitle"></div><div id="detailYear"></div><div id="detailRegion"></div><div id="detailProvider"></div><div style="margin-top:5px">Urheberrechte und Lizenz beim jeweiligen Kartenanbieter prüfen.</div></div>
+        </div>
+      </div>
+      <div class="map-bottom">
+        <div id="compareRangeBox" class="compare-range-box"><span>Damals</span><input id="compareRange" type="range" min="0" max="100" value="50" step="1" aria-label="Position des Kartenvergleichs"><span>Heute</span></div>
+        <div class="timeline" aria-label="Zeitleiste der Region">
+          <button id="prevYear" type="button" title="Ältere Karte" aria-label="Ältere Karte">‹</button>
+          <div class="timeline-center"><strong id="timelineYear">Historische Karte</strong><small id="timelineText">Weitere Karten derselben Region entdecken</small></div>
+          <button id="nextYear" type="button" title="Neuere Karte" aria-label="Neuere Karte">›</button>
+        </div>
+      </div>
+      <div id="toast" class="toast" role="status" aria-live="polite"><span id="toastText"></span><button id="toastDismiss" class="toast-dismiss" type="button" aria-label="Hinweis schließen">×</button></div>
+    </main>
+  </div>
+  <dialog id="aboutDialog" class="about-modal">
+    <h2>Über den Kartenatlas</h2>
+    <p>Der historische Kartenatlas zeigt ausgewählte historische, georeferenzierte Karten über aktuellen OpenStreetMap-Kacheln. Die Karten werden direkt von den in dieser HTML-Datei hinterlegten externen Anbietern geladen.</p>
+    <p><b>Hinweis für iPhone/iPad:</b> Beim direkten Öffnen aus Dateien in Edge (edge://external-file) kann der Browser externe Skripte blockieren. Für den zuverlässigen Betrieb die index.html über HTTPS, beispielsweise GitHub Pages, aufrufen. Kartenkacheln benötigen weiterhin Internet.</p>
+    <p><b>Bedienung:</b> Eine Karte aus der Bibliothek auswählen, ihre Deckkraft einstellen oder unter „Vergleichen“ die Trennlinie verschieben. Die Zeitleiste wechselt zwischen datierten Karten derselben Region. Über die Suche lassen sich heutige Adressen ansteuern.</p>
+    <p>Die automatische Positionierung nutzt <b>ungefähre Regionsmittelpunkte</b>, keine geprüften Kartengrenzen. Einige alte externe Kachelserver können nicht mehr erreichbar sein; die Quelladressen wurden bewusst unverändert übernommen. Bei historischen Karten können unkartierte Flächen transparent bleiben.</p>
+    <p>Favoriten werden ausschließlich lokal in diesem Browser gespeichert. Der Standort und optional die Kompassrichtung werden erst auf Knopfdruck angefragt. Die Kompassanzeige kann auf iOS eine zusätzliche Sensorfreigabe benötigen. Ein geteilter Link kann den gerade sichtbaren Kartenausschnitt und damit auch eine Standortposition enthalten.</p>
+    <p>Grundkarte: © OpenStreetMap-Mitwirkende. Historische Karten: jeweilige Anbieter und Originalquellen; Lizenzen und Urheberrechte sind dort einzusehen.</p>
+    <button id="closeDialog" class="btn btn-primary" type="button">Schließen</button>
+  </dialog>
+  <script>
+    'use strict';
+    // Die gesamte Kartenkonfiguration bleibt in dieser Datei (keine maps.json).
+    // Alternative Leaflet-CDNs sichern den Start ab, wenn eine Quelle nicht erreichbar ist.
+    // Script-Tags werden erst nach erfolgreichem Laden der DOM-Struktur nachgeladen.
+    async function loadLeaflet() {
+      if (window.L && typeof window.L.map === 'function') return true;
+      const urls = [
+        'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js',
+        'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js',
+        'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+      ];
+      for (const url of urls) {
+        const loaded = await new Promise(resolve => {
+          const script = document.createElement('script');
+          script.src = url;
+          script.async = true;
+          let done = false;
+          const finish = (success) => {
+            if (done) return;
+            done = true;
+            clearTimeout(timeout);
+            script.onload = null;
+            script.onerror = null;
+            if (!success) script.remove();
+            resolve(success);
+          };
+          const timeout = setTimeout(() => finish(false), 5000);
+          script.onload = () => finish(Boolean(window.L && typeof window.L.map === 'function'));
+          script.onerror = () => finish(false);
+          document.head.appendChild(script);
+        });
+        if (loaded) return true;
+      }
+      return false;
+    }
+    window.addEventListener('DOMContentLoaded', async () => {
+      const $ = id => document.getElementById(id);
+      const stage = document.querySelector('.stage');
+      if (!await loadLeaflet()) {
+        const local = /^(?:file:|edge:)/i.test(location.protocol);
+        $('toast').textContent = local
+          ? 'Edge hat die externe Kartenbibliothek für diese lokale Datei nicht geladen. Bitte die index.html über HTTPS (z. B. GitHub Pages) öffnen.'
+          : 'Leaflet konnte auch über die alternativen Server nicht geladen werden. Bitte Verbindung und Browser-Einstellungen prüfen.';
+        $('toast').classList.add('show');
+        return;
+      }
+      const regionDefinitions = {
+        'Berlin': { center:[52.5200,13.4050], zoom:12 },
+        'Spandau': { center:[52.535,13.199], zoom:13 },
+        'Tiergarten': { center:[52.514,13.350], zoom:14 },
+        'Grunewald': { center:[52.482,13.224], zoom:13 },
+        'Charlottenburg': { center:[52.517,13.303], zoom:13 },
+        'Rom': { center:[41.8925,12.4853], zoom:13 },
+        'Wien': { center:[48.2082,16.3738], zoom:12 },
+        'Europa': { center:[50.1,13.4], zoom:4 },
+        'Preußen': { center:[53.4,17.0], zoom:6 },
+        'Unbekannt': { center:[52.5200,13.4050], zoom:11 }
+      };
+      const recognize = label => {
+        const s=label.toLowerCase();
+        if (s.includes('europa')) return 'Europa';
+        if (s.includes('preussen')||s.includes('preußen')) return 'Preußen';
+        if (s.includes('rom')||s.includes('forum')) return 'Rom';
+        if (s.includes('wien')) return 'Wien';
+        if (s.includes('spandau') && !s.includes('nordberlin')) return 'Spandau';
+        if (s.includes('tiergarten')) return 'Tiergarten';
+        if (s.includes('grunewald')) return 'Grunewald';
+        if (s.includes('charlottenburg')) return 'Charlottenburg';
+        if (s==='test') return 'Unbekannt';
+        return 'Berlin';
+      };
+      const maps = Array.from($('originalMapSources').options).map((option,id) => {
+        const rawName=option.textContent.trim();
+        const name=rawName.replace(/^--|--$/g,'').trim();
+        const dateMatch=name.match(/(?:^|\s)(1[0-9]{3}|20[0-9]{2})(?=\s|$)/);
+        const year=dateMatch?Number(dateMatch[1]):null;
+        const region=recognize(name);
+        const sourceUrl=option.value;
+        let provider='Eigene Kacheln';
+        if (sourceUrl.includes('wmflabs.org')) provider='Wikimedia MapWarper (alte Adresse)';
+        else if (sourceUrl.includes('prov.vic.gov.au')) provider='Public Record Office Victoria / MapWarper';
+        else if (sourceUrl.includes('mapwarper.net')) provider='MapWarper';
+        const match=sourceUrl.match(/^(https?:\/\/[^/]+)\/maps\/tile\/(\d+)\//);
+        const detailUrl=match?`${match[1]}/maps/${match[2]}`:sourceUrl.replace(/\{z\}\/\{x\}\/\{y\}\.png.*/, '');
+        return {id,name,year,region,sourceUrl,detailUrl,provider,displayName:name==='Berlin 1925'?`${name} · Karte ${match?match[2]:id+1}`:name};
+      });
+      const definedRegions=['Alle','Berlin','Spandau','Tiergarten','Charlottenburg','Grunewald','Wien','Rom','Europa','Preußen','Favoriten','Weitere'];
+      let savedFavorites=[];
+      try { savedFavorites=JSON.parse(localStorage.getItem('historischer-atlas-favoriten')||'[]'); if(!Array.isArray(savedFavorites))savedFavorites=[]; } catch (_) { savedFavorites=[]; }
+      let favorites=new Set(savedFavorites.filter(Number.isInteger));
+      let regionFilter='Alle';
+      let active=null, layer=null, mode='overlay', opacity=.78, split=.5;
+      let gpsAccuracy=null, gpsWatchId=null, gpsKnownPosition=null, gpsLastAccuracy=null, compassHeading=null, compassListening=false;
+      let autoFollowCamera=false, firstFollowFix=false, gpsCameraMove=false;
+      let detailOpen=false, toastTimer=null, searchAbort=null;
+      const map=L.map('map',{zoomControl:false,attributionControl:false,preferCanvas:true,minZoom:2,maxZoom:19,worldCopyJump:true,zoomAnimation:false}).setView([52.52,13.405],12);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,maxNativeZoom:19}).addTo(map);
+      // Eigenständige, nicht interaktive historische Karte; der sichtbare
+      // Vergleichsausschnitt wird am festen DIV beschnitten, nicht an einem
+      // Leaflet-Pane, der beim Verschieben transformiert wird.
+      const historicalMap=L.map('historicalMap',{
+        zoomControl:false,attributionControl:false,dragging:false,scrollWheelZoom:false,
+        doubleClickZoom:false,boxZoom:false,keyboard:false,touchZoom:false,
+        zoomAnimation:false,minZoom:2,maxZoom:19,worldCopyJump:true
+      }).setView(map.getCenter(),map.getZoom());
+      const syncHistorical=()=>{
+        const center=map.getCenter(),zoom=map.getZoom();
+        const other=historicalMap.getCenter();
+        if(historicalMap.getZoom()!==zoom || Math.abs(other.lat-center.lat)>1e-8 || Math.abs(other.lng-center.lng)>1e-8)
+          historicalMap.setView(center,zoom,{animate:false});
+      };
+      map.on('move zoomend',syncHistorical);
+      // GPS-Messung läuft weiter, auch wenn der Nutzer die Kartenkamera pausiert.
+      function updateRecenterButton(){
+        $('recenterButton').hidden=gpsWatchId===null||autoFollowCamera;
+      }
+      function suspendAutoFollow(){
+        if(gpsWatchId===null||!autoFollowCamera)return;
+        autoFollowCamera=false;
+        updateRecenterButton();
+        $('locationStatus').textContent='GPS aktiv · Kartenansicht frei. „Neu zentrieren“ stellt die Verfolgung wieder her.';
+      }
+      map.on('dragstart',suspendAutoFollow);
+      map.on('zoomstart',()=>{if(!gpsCameraMove)suspendAutoFollow();});
+      $('zoomIn').addEventListener('click',()=>{suspendAutoFollow();map.zoomIn();});
+      $('zoomOut').addEventListener('click',()=>{suspendAutoFollow();map.zoomOut();});
+      const dismissNotice=()=>{$('toast').classList.remove('show');clearTimeout(toastTimer);};
+      $('toastDismiss').addEventListener('click',dismissNotice);
+      const setNotice=(message,duration=3200)=>{
+        dismissNotice();
+        $('toastText').textContent=message;
+        $('toast').classList.add('show');
+        if(duration>0)toastTimer=setTimeout(dismissNotice,Math.min(duration,4200));
+      };
+      const closeMobile=() => $('sidebar').classList.remove('open');
+      $('openSidebar').addEventListener('click',()=>$('sidebar').classList.add('open'));
+      $('closeSidebar').addEventListener('click',closeMobile);
+      const normalRegion = r => ['Spandau','Tiergarten','Grunewald','Charlottenburg'].includes(r)?'Berlin':r;
+      const mapGroup=m=>normalRegion(m.region);
+      function filteredMaps(){
+        const query=$('mapSearch').value.trim().toLocaleLowerCase('de');
+        return maps.filter(m=>{
+          const matchedRegion=regionFilter==='Alle'||(regionFilter==='Favoriten'?favorites.has(m.id):regionFilter==='Weitere'?m.region==='Unbekannt':regionFilter==='Berlin'?mapGroup(m)==='Berlin':m.region===regionFilter);
+          return matchedRegion&&(!query||`${m.name} ${m.year||''} ${m.region} ${m.provider}`.toLocaleLowerCase('de').includes(query));
+        });
+      }
+      function renderRegions(){
+        $('regions').replaceChildren();
+        for(const r of definedRegions){
+          const b=document.createElement('button');b.type='button';b.className='pill';b.textContent=r;b.setAttribute('aria-pressed',String(r===regionFilter));
+          b.addEventListener('click',()=>{regionFilter=r;renderRegions();renderList();});
+          $('regions').appendChild(b);
+        }
+      }
+      function renderList(){
+        const values=filteredMaps();$('mapCount').textContent=`${values.length} von ${maps.length}`;
+        const wrap=$('mapList');wrap.replaceChildren();
+        if(!values.length){const empty=document.createElement('div');empty.className='empty';empty.textContent='Keine passende Karte gefunden. Suche oder Filter ändern.';wrap.appendChild(empty);return;}
+        const frag=document.createDocumentFragment();
+        for(const m of values){
+          const row=document.createElement('div');row.className='map-card';row.setAttribute('role','option');row.setAttribute('aria-selected',String(active?.id===m.id));row.tabIndex=0;
+          const ico=document.createElement('span');ico.className='map-card-icon';ico.setAttribute('aria-hidden','true');ico.textContent=m.year?'◷':'▧';
+          const main=document.createElement('span');main.className='map-card-main';
+          const strong=document.createElement('strong');strong.textContent=m.displayName;
+          const sm=document.createElement('small');sm.textContent=`${m.region}${m.year?` · ${m.year}`:''} · ${m.provider.replace(' (alte Adresse)','')}`;
+          main.append(strong,sm);
+          const star=document.createElement('button');star.type='button';star.className='star';star.textContent=favorites.has(m.id)?'★':'☆';star.title=favorites.has(m.id)?'Aus Favoriten entfernen':'Zu Favoriten hinzufügen';star.setAttribute('aria-label',star.title);star.setAttribute('aria-pressed',String(favorites.has(m.id)));
+          star.addEventListener('click',event=>{event.stopPropagation();toggleFavorite(m.id);});
+          row.append(ico,main,star);
+          row.addEventListener('click',event=>{if(event.target.closest('.star'))return;selectMap(m.id);closeMobile();});
+          row.addEventListener('keydown',event=>{if(event.target!==row)return;if(event.key==='Enter'||event.key===' '){event.preventDefault();selectMap(m.id);closeMobile();}});
+          frag.appendChild(row);
+        }
+        wrap.appendChild(frag);
+      }
+      function toggleFavorite(id){
+        if(favorites.has(id))favorites.delete(id);else favorites.add(id);
+        try {localStorage.setItem('historischer-atlas-favoriten',JSON.stringify([...favorites]));}
+        catch (_){setNotice('Favoriten konnten in diesem Browser nicht gespeichert werden.');}
+        renderList();
+      }
+      $('mapSearch').addEventListener('input',renderList);
+      function applyPane(){
+        if(!layer)return;
+        const cut=(100-split*100).toFixed(2);
+        // An der nicht transformierten Kartenfläche clippen: iOS Safari/Edge stabil.
+        $('historicalMap').style.clipPath=mode==='compare'?`inset(0 ${cut}% 0 0)`:'inset(0 0 0 0)';
+        layer.setOpacity(mode==='compare'?1:opacity);
+      }
+      function setSplit(value){
+        split=Math.max(0,Math.min(1,Number(value)));
+        $('compareRange').value=String(Math.round(split*100));
+        $('compareLine').style.left=`${split*100}%`;
+        $('compareHandle').style.left=`${split*100}%`;
+        applyPane();
+      }
+      function setMode(newMode){
+        mode=newMode==='compare'?'compare':'overlay';
+        stage.classList.toggle('is-comparing',mode==='compare');
+        $('compareMode').setAttribute('aria-pressed',String(mode==='compare'));
+        $('overlayMode').setAttribute('aria-pressed',String(mode==='overlay'));
+        for(const id of ['compareLine','compareHandle'])$(id).style.display=mode==='compare'?'block':'none';
+        $('oldLabel').style.display='none';$('newLabel').style.display='none';
+        dismissNotice();
+        $('compareRangeBox').style.display=mode==='compare'?'flex':'none';
+        $('opacityRange').disabled=mode==='compare';
+        $('opacityValue').textContent=mode==='compare'?'Im Vergleich: 100 %':`${Math.round(opacity*100)} %`;
+        applyPane();
+      }
+      $('overlayMode').addEventListener('click',()=>setMode('overlay'));
+      $('compareMode').addEventListener('click',()=>setMode('compare'));
+      $('compareRange').addEventListener('input',event=>setSplit(Number(event.target.value)/100));
+      $('opacityRange').addEventListener('input',event=>{opacity=Number(event.target.value)/100;$('opacityValue').textContent=`${Math.round(opacity*100)} %`;applyPane();});
+      // Ziehgriff kann per Maus, Touch und Tastatur bewegt werden.
+      let dragging=false;
+      const dragTo=e=>{const rect=stage.getBoundingClientRect();setSplit((e.clientX-rect.left)/rect.width);};
+      $('compareHandle').addEventListener('pointerdown',e=>{e.preventDefault();dragging=true;$('compareHandle').setPointerCapture(e.pointerId);dragTo(e);});
+      $('compareHandle').addEventListener('pointermove',e=>{if(dragging)dragTo(e);});
+      $('compareHandle').addEventListener('pointerup',()=>{dragging=false;});
+      $('compareHandle').addEventListener('pointercancel',()=>{dragging=false;});
+      $('compareHandle').addEventListener('keydown',e=>{if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();setSplit(split+(e.key==='ArrowRight'?.025:-.025));}});
+      function distanceKm(a,b){
+        const r=Math.PI/180, dLat=(b[0]-a[0])*r,dLon=(b[1]-a[1])*r;
+        const h=Math.sin(dLat/2)**2+Math.cos(a[0]*r)*Math.cos(b[0]*r)*Math.sin(dLon/2)**2;
+        return 12742*Math.asin(Math.min(1,Math.sqrt(h)));
+      }
+      function focusMap(m, previous, restored=false){
+        if(restored)return;
+        const cfg=regionDefinitions[m.region];
+        const current=map.getCenter();
+        const moved=distanceKm([current.lat,current.lng],cfg.center);
+        const otherGroup=!previous||mapGroup(previous)!==mapGroup(m);
+        const differentDistrict=!!previous&&m.region!==previous.region&&m.region!=='Berlin';
+        if(otherGroup||differentDistrict||moved>(m.region==='Europa'?1800:20)){
+          map.setView(cfg.center,cfg.zoom,{animate:false});
+        } else if(m.region==='Europa'&&map.getZoom()>7){
+          map.setView(cfg.center,cfg.zoom,{animate:false});
+        }
+      }
+      function sourceAttribution(m){
+        const provider=m.provider.replaceAll('"','&quot;').replaceAll('<','&lt;');
+        // MapWarper stellt die Kacheln bereit, ohne dass dadurch Rechte am Karteninhalt behauptet werden.
+        return `Historische Karte: <a href="${m.detailUrl}" target="_blank" rel="noopener noreferrer">${provider}</a>`;
+      }
+      function showDetail(){
+        if(!active)return;
+        const m=active;
+        $('detailLink').href=m.detailUrl;
+        $('detailTitle').innerHTML=`<b>Karte:</b> ${escapeHtml(m.displayName)}`;
+        $('detailYear').textContent=m.year?`Datierung laut Titel: ${m.year}`:'Keine eindeutige Jahreszahl im Titel';
+        $('detailRegion').textContent=`Region: ${m.region}`;
+        $('detailProvider').textContent=`Kacheldienst: ${m.provider}`;
+        const cfg=regionDefinitions[m.region], zoom=Math.min(cfg.zoom,12);
+        const ll=L.latLng(cfg.center);
+        const point=map.project(ll,zoom).divideBy(256).floor();
+        const previewUrl=m.sourceUrl.replace('{z}',zoom).replace('{x}',point.x).replace('{y}',point.y);
+        const img=$('mapPreview');img.hidden=true;$('previewFallback').hidden=false;
+        img.onerror=()=>{img.hidden=true;$('previewFallback').hidden=false;};
+        img.onload=()=>{img.hidden=false;$('previewFallback').hidden=true;};
+        img.src=previewUrl;
+      }
+      function escapeHtml(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+      function updateTimeline(){
+        if(!active)return;
+        const group=mapGroup(active);
+        const timeline=maps.filter(m=>mapGroup(m)===group&&m.year!==null).sort((a,b)=>a.year-b.year||a.id-b.id);
+        const pos=timeline.findIndex(m=>m.id===active.id);
+        $('timelineYear').textContent=active.year?String(active.year):(active.name.toLowerCase().includes('antik')?'Antike':active.displayName);
+        $('timelineText').textContent=`${group} · ${pos>=0?`${pos+1} von ${timeline.length} datierten Karten`:`${timeline.length} datierte Karten verfügbar`}`;
+        $('prevYear').disabled=pos<=0;
+        $('nextYear').disabled=pos<0||pos===timeline.length-1;
+        $('prevYear').onclick=()=>{if(pos>0)selectMap(timeline[pos-1].id);};
+        $('nextYear').onclick=()=>{if(pos>=0&&pos<timeline.length-1)selectMap(timeline[pos+1].id);};
+      }
+      function selectMap(id,{restoreView=false}={}){
+        const m=maps[id];if(!m)return;
+        const previous=active;
+        dismissNotice();
+        if(layer){historicalMap.removeLayer(layer);layer=null;}
+        active=m;
+        focusMap(m,previous,restoreView);
+        syncHistorical();
+        layer=L.tileLayer(m.sourceUrl,{
+          minZoom:2,maxZoom:19,tms:false,
+          attribution:'',keepBuffer:3,updateWhenIdle:true
+        }).addTo(historicalMap);
+        applyPane();
+        $('sourceAttributionLink').href=m.detailUrl;
+        $('sourceAttributionLink').textContent=m.provider.replace(' (alte Adresse)','');
+        $('titleMap').textContent=m.displayName;
+        $('titleRegion').textContent=`${m.region} · ${m.provider}`;
+        $('titleYear').textContent=m.year?String(m.year):m.name.toLowerCase().includes('antik')?'Antike':'Karte';
+        renderList();updateTimeline();showDetail();
+      }
+      $('closeDetail').addEventListener('click',()=>{
+        detailOpen=false;$('detailCard').classList.remove('open');
+      });
+      $('infoButton').addEventListener('click',()=>{detailOpen=!detailOpen;$('detailCard').classList.toggle('open',detailOpen);});
+      $('detailCard').addEventListener('click',e=>e.stopPropagation());
+      function renderGpsIndicator(){
+        if(!gpsKnownPosition)return;
+        const p=map.latLngToContainerPoint(gpsKnownPosition);
+        const indicator=$('gpsIndicator');
+        indicator.hidden=false;
+        indicator.style.left=`${p.x}px`;indicator.style.top=`${p.y}px`;
+        indicator.classList.toggle('has-heading',Number.isFinite(compassHeading));
+        if(Number.isFinite(compassHeading))indicator.style.setProperty('--heading',`${compassHeading}deg`);
+      }
+      map.on('move zoomend resize',renderGpsIndicator);
+      function orientationReceived(event){
+        let heading=Number(event.webkitCompassHeading);
+        if(!Number.isFinite(heading) && event.absolute && Number.isFinite(event.alpha))
+          heading=(360-event.alpha)%360;
+        if(!Number.isFinite(heading))return;
+        compassHeading=(heading+360)%360;
+        renderGpsIndicator();
+      }
+      function enableCompass(){
+        if(compassListening||typeof DeviceOrientationEvent==='undefined')return;
+        const start=()=>{
+          if(compassListening)return;
+          compassListening=true;
+          window.addEventListener('deviceorientation',orientationReceived,true);
+          window.addEventListener('deviceorientationabsolute',orientationReceived,true);
+        };
+        // Das iPhone verlangt den Berechtigungsdialog unmittelbar nach dem Klick.
+        if(typeof DeviceOrientationEvent.requestPermission==='function'){
+          try{DeviceOrientationEvent.requestPermission().then(value=>{if(value==='granted')start();}).catch(()=>{});}
+          catch(_){}
+        }else start();
+      }
+      function gpsTargetZoom(){
+        return gpsLastAccuracy!==null&&gpsLastAccuracy<=100?18:gpsLastAccuracy!==null&&gpsLastAccuracy<=500?16:14;
+      }
+      function centerOnGps(resetZoom=false){
+        if(!gpsKnownPosition)return;
+        gpsCameraMove=true;
+        try{
+          if(resetZoom)map.setView(gpsKnownPosition,gpsTargetZoom(),{animate:false});
+          else map.panTo(gpsKnownPosition,{animate:false});
+        }finally{gpsCameraMove=false;}
+        renderGpsIndicator();
+      }
+      function updateLocation(position,{center=false,initialZoom=false}={}){
+        const {latitude:lat,longitude:lng,accuracy,heading}=position.coords;
+        gpsKnownPosition=L.latLng(lat,lng);
+        gpsLastAccuracy=Number.isFinite(accuracy)?accuracy:9999;
+        if(!gpsAccuracy)
+          gpsAccuracy=L.circle(gpsKnownPosition,{radius:Math.max(gpsLastAccuracy,1),weight:1,color:'#2576a9',fillColor:'#4da9d1',fillOpacity:.08}).addTo(map);
+        else gpsAccuracy.setLatLng(gpsKnownPosition).setRadius(Math.max(gpsLastAccuracy,1));
+        if(!Number.isFinite(compassHeading)&&Number.isFinite(heading)&&heading>=0)compassHeading=heading;
+        if(center)centerOnGps(initialZoom);
+        renderGpsIndicator();
+        if(autoFollowCamera)
+          $('locationStatus').textContent=`GPS aktiv · Genauigkeit ca. ±${Math.round(gpsLastAccuracy)} m · Karte folgt`;
+        else if(gpsWatchId!==null)
+          $('locationStatus').textContent=`GPS aktiv · Genauigkeit ca. ±${Math.round(gpsLastAccuracy)} m · Kartenansicht frei`;
+        else $('locationStatus').textContent=`Standort ermittelt · Genauigkeit ca. ±${Math.round(gpsLastAccuracy)} m`;
+      }
+      function geoError(error){
+        const messages={1:'Standortfreigabe verweigert. Bitte Browserberechtigung prüfen.',2:'Standort derzeit nicht verfügbar.',3:'Standortabfrage hat zu lange gedauert.'};
+        const msg=messages[error?.code]||'Standort konnte nicht ermittelt werden.';
+        $('locationStatus').textContent=msg;setNotice(msg,6500);
+        if(gpsWatchId!==null&&navigator.geolocation){navigator.geolocation.clearWatch(gpsWatchId);gpsWatchId=null;}
+        autoFollowCamera=false;firstFollowFix=false;updateRecenterButton();
+        $('followLocation').checked=false;
+      }
+      function geolocationAvailable(){
+        if(!navigator.geolocation){setNotice('Der Browser unterstützt keine Standortabfrage.');return false;}
+        if(!window.isSecureContext){setNotice('Für GPS muss die Seite über HTTPS (z. B. GitHub Pages) geöffnet werden.');return false;}
+        return true;
+      }
+      function startTracking(){
+        if(gpsWatchId!==null)return;
+        if(!geolocationAvailable()){$('followLocation').checked=false;return;}
+        enableCompass();
+        autoFollowCamera=true;
+        firstFollowFix=!gpsKnownPosition;
+        $('followLocation').checked=true;
+        $('locationStatus').textContent='GPS-Verfolgung aktiv …';
+        if(gpsKnownPosition){centerOnGps(true);firstFollowFix=false;}
+        gpsWatchId=navigator.geolocation.watchPosition(position=>{
+          updateLocation(position);
+          if(autoFollowCamera){
+            centerOnGps(firstFollowFix);
+            firstFollowFix=false;
+          }
+        },geoError,{enableHighAccuracy:true,maximumAge:10000,timeout:15000});
+        updateRecenterButton();
+      }
+      function stopTracking(){
+        if(gpsWatchId!==null&&navigator.geolocation)navigator.geolocation.clearWatch(gpsWatchId);
+        gpsWatchId=null;autoFollowCamera=false;firstFollowFix=false;
+        updateRecenterButton();
+        $('followLocation').checked=false;
+        $('locationStatus').textContent='Standortverfolgung beendet.';
+      }
+      function recenterAndFollow(){
+        if(!geolocationAvailable())return;
+        enableCompass();
+        autoFollowCamera=true;
+        firstFollowFix=!gpsKnownPosition;
+        if(gpsWatchId===null)startTracking();
+        else{
+          if(gpsKnownPosition){centerOnGps(true);firstFollowFix=false;}
+          updateRecenterButton();
+        }
+        $('locationStatus').textContent=gpsKnownPosition?'GPS aktiv · Karte folgt wieder dem Standort.':'GPS aktiv · Standort wird ermittelt …';
+      }
+      function locateOnce(){
+        if(!geolocationAvailable())return;
+        enableCompass();dismissNotice();
+        const btn=$('locateMapButton');
+        btn.disabled=true;btn.setAttribute('aria-busy','true');
+        $('locationStatus').textContent='Standort wird ermittelt …';
+        navigator.geolocation.getCurrentPosition(
+          p=>{
+            btn.disabled=false;btn.removeAttribute('aria-busy');
+            if(gpsWatchId!==null)autoFollowCamera=true;
+            updateLocation(p,{center:true,initialZoom:true});
+            firstFollowFix=false;updateRecenterButton();
+          },
+          error=>{btn.disabled=false;btn.removeAttribute('aria-busy');geoError(error);},
+          {enableHighAccuracy:true,maximumAge:5000,timeout:15000}
+        );
+      }
+      $('locateButton').addEventListener('click',locateOnce);
+      $('locateMapButton').addEventListener('click',locateOnce);
+      $('recenterButton').addEventListener('click',recenterAndFollow);
+      $('followLocation').addEventListener('change',e=>{if(e.target.checked)startTracking();else stopTracking();});
+      $('addressButton').addEventListener('click',()=>{$('addressPopup').classList.toggle('open');if($('addressPopup').classList.contains('open'))$('addressInput').focus();});
+      let lastAddressRequest=0;
+      $('addressForm').addEventListener('submit',async e=>{
+        e.preventDefault();
+        const q=$('addressInput').value.trim();if(q.length<3)return;
+        if(Date.now()-lastAddressRequest<1200){$('addressResults').textContent='Bitte einen Moment vor der nächsten Suche lassen.';return;}
+        lastAddressRequest=Date.now();
+        if(searchAbort)searchAbort.abort();
+        searchAbort=new AbortController();
+        const out=$('addressResults');out.replaceChildren();out.textContent='Suche läuft …';
+        try {
+          const request=`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&accept-language=de&q=${encodeURIComponent(q)}`;
+          const response=await fetch(request,{signal:searchAbort.signal,headers:{'Accept':'application/json'}});
+          if(!response.ok)throw new Error(`HTTP ${response.status}`);
+          const hits=await response.json();out.replaceChildren();
+          if(!hits.length){out.textContent='Kein Ort gefunden. Bitte den Suchbegriff präzisieren.';return;}
+          for(const hit of hits){
+            const b=document.createElement('button');b.type='button';b.className='address-result';b.textContent=hit.display_name;
+            b.addEventListener('click',()=>{
+              const lat=Number(hit.lat),lon=Number(hit.lon);
+              if(!Number.isFinite(lat)||!Number.isFinite(lon))return;
+              if(hit.boundingbox?.length===4){
+                const [south,north,west,east]=hit.boundingbox.map(Number);
+                map.fitBounds([[south,west],[north,east]],{padding:[45,45],maxZoom:16});
+              }else map.setView([lat,lon],15);
+              $('addressPopup').classList.remove('open');
+              setNotice('Ort gefunden. Die historische Karte ist nur sichtbar, soweit sie dieses Gebiet abdeckt.');
+            });out.appendChild(b);
+          }
+        }catch(err){if(err.name!=='AbortError')out.textContent='Ortssuche derzeit nicht verfügbar. Bitte erneut versuchen.';}
+      });
+      $('shareButton').addEventListener('click',async()=>{
+        if(!active)return;
+        const center=map.getCenter();
+        const params=new URLSearchParams({karte:String(active.id),lat:center.lat.toFixed(5),lon:center.lng.toFixed(5),zoom:String(map.getZoom()),modus:mode,deckkraft:String(Math.round(opacity*100)),teilung:String(Math.round(split*100))});
+        const url=new URL(window.location.href);url.hash=params.toString();
+        const sharePrivacyWarning=gpsKnownPosition?' Achtung: Der Kartenausschnitt kann deinen Standort erkennen lassen.':'';
+        try{
+          if(navigator.share){await navigator.share({title:'Historischer Kartenatlas',url:url.toString()});return;}
+          if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(url.toString());setNotice('Link zum Kartenausschnitt kopiert.'+sharePrivacyWarning,6500);return;}
+          window.prompt('Link kopieren:',url.toString());
+        }catch(e){if(e.name!=='AbortError')window.prompt('Link kopieren:',url.toString());}
+      });
+      $('closeDialog').addEventListener('click',()=>$('aboutDialog').close());
+      $('aboutDialog').addEventListener('click',e=>{if(e.target===$('aboutDialog'))$('aboutDialog').close();});
+      // Infoseite über Überschrift öffnen; explizite Hinweise zu Daten, GPS und Quellen.
+      $('aboutBrand').addEventListener('click',()=>$('aboutDialog').showModal());
+      $('aboutButton').addEventListener('click',()=>$('aboutDialog').showModal());
+      // Tastaturbedienbare alternative Öffnung: 'i', solange kein Eingabefeld fokussiert ist.
+      document.addEventListener('keydown',e=>{
+        if(e.key==='Escape'){$('addressPopup').classList.remove('open');closeMobile();}
+        if(e.key.toLowerCase()==='i'&&!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)&&!e.ctrlKey&&!e.altKey){if(!$('aboutDialog').open)$('aboutDialog').showModal();}
+      });
+      function restoreFromHash(){
+        const p=new URLSearchParams(location.hash.replace(/^#/,''));
+        const id=p.has('karte')?Number(p.get('karte')):0;
+        const validId=Number.isInteger(id)&&id>=0&&id<maps.length?id:0;
+        const lat=Number(p.get('lat')),lon=Number(p.get('lon')),zoom=Number(p.get('zoom'));
+        const validView=p.has('lat')&&p.has('lon')&&p.has('zoom')&&Number.isFinite(lat)&&Number.isFinite(lon)&&Number.isFinite(zoom)&&Math.abs(lat)<=90&&Math.abs(lon)<=180&&zoom>=2&&zoom<=19;
+        if(validView)map.setView([lat,lon],zoom,{animate:false});
+        if(p.has('deckkraft')){const n=Number(p.get('deckkraft'));if(Number.isFinite(n)&&n>=0&&n<=100){opacity=n/100;$('opacityRange').value=String(n);}}
+        if(p.has('teilung')){const n=Number(p.get('teilung'));if(Number.isFinite(n))setSplit(n/100);}
+        selectMap(validId,{restoreView:validView});
+        setMode(p.get('modus')==='compare'?'compare':'overlay');
+      }
+      renderRegions();
+      restoreFromHash();
+      // Bei Browserzurück/-vor wird der geteilte Kartenausschnitt erneut hergestellt.
+      window.addEventListener('hashchange',restoreFromHash);
+      // Leaflet muss nach Wechsel der mobilen Kartenbibliothek die Abmessungen neu bestimmen.
+      const refreshSize=()=>{
+        map.invalidateSize({animate:false,pan:false});
+        historicalMap.invalidateSize({animate:false,pan:false});
+        syncHistorical();
+        renderGpsIndicator();
+      };
+      $('closeSidebar').addEventListener('click',()=>setTimeout(refreshSize,280));
+      window.addEventListener('resize',refreshSize);
+      window.addEventListener('orientationchange',()=>setTimeout(refreshSize,220));
+      window.addEventListener('pageshow',refreshSize);
+      if(window.visualViewport){
+        window.visualViewport.addEventListener('resize',refreshSize);
+        window.visualViewport.addEventListener('scroll',refreshSize);
+      }
+      if(typeof ResizeObserver!=='undefined')new ResizeObserver(refreshSize).observe(stage);
+      setTimeout(refreshSize,200);
+    });
+  </script>
+</body>
+</html>
